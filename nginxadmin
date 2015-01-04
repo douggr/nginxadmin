@@ -4,7 +4,7 @@
 # nginxadmin --- Bash script to create, enable or disable a site in nginx.
 # douggr/nginxadmin
 #
-# @link https://github.com/douggr/nginxadmin
+# @link https://github.com/douggr/nginxadmi
 # @version 0.0.1
 # @license MIT
 #
@@ -53,8 +53,9 @@ Usage: $SCRIPTNAME <command> <filename> [document root]
 
 Available commands:
   help                         : Show this message and exit.
-  -c, create <filename> <root> : Create (and enable) a new site.
-  -e, enable <filename>        : Enable an earlier created site.
+  -c, create  <filename> <root>: Create (and enable) a new site. Note, <root>
+                                 must be an absolute path.
+  -e, enable  <filename>       : Enable an earlier created site.
   -d, disable <filename>       : Disable a site.
 
 EOT
@@ -215,7 +216,3 @@ case $ACTION in
     exit $STS_INVALID_ARGUMENT
     ;;
 esac
-
-exit 0
-
-#EOF
