@@ -1,0 +1,221 @@
+#!/bin/bash
+
+#
+# nginxadmin --- Bash script to create, enable or disable a site in nginx.
+# douggr/nginxadmin
+#
+# @link https://github.com/douggr/nginxadmin
+# @version 0.0.1
+# @license MIT
+#
+
+## Set shell colors.
+BOLD=$(setterm -bold on)
+RESET=$(setterm -default)
+
+## The nginx binary.
+NGINX=$(which nginx)
+[ -x $NGINX ] || exit 0
+
+## Exit statuses {{{
+STS_INVALID_NUMBER_OF_ARGUMENTS=1
+STS_INVALID_ARGUMENT=2
+STS_EMPTY_DOCUMENT_ROOT=3
+STS_INVALID_DOCUMENT_ROOT=4
+STS_SITE_FILE_NOT_FOUND=5
+## }}}
+
+## The paths for both nginx configuration files and the sites configuration
+## files and symbolic link destinations.
+if [ -d /usr/local/etc/nginx ]; then
+  NGINX_CONF_DIR=/usr/local/etc/nginx
+else
+  NGINX_CONF_DIR=/etc/nginx
+fi
+
+AVAILABLE_SITES_DIR="sites-available"
+AVAILABLE_SITES_PATH="$NGINX_CONF_DIR/$AVAILABLE_SITES_DIR"
+ENABLED_SITES_PATH="$NGINX_CONF_DIR/sites-enabled"
+SCRIPTNAME=${0##*/}
+
+## The type of action we will perform. Create, enable or disable a site.
+ACTION=$1
+
+## The site to perform the action on.
+FILENAME=$2
+
+## The domain to enable (used only when creating new sites).
+DOCUMENT_ROOT=$3
+
+print_usage() {
+  cat <<EOT
+Usage: $SCRIPTNAME <command> <filename> [document root]
+
+Available commands:
+  help                         : Show this message and exit.
+  -c, create <filename> <root> : Create (and enable) a new site.
+  -e, enable <filename>        : Enable an earlier created site.
+  -d, disable <filename>       : Disable a site.
+
+EOT
+}
+
+make_relative_path() {
+  printf ../%.0s $(eval echo {0..`echo ${1//[^\/]/} | awk '{ print length }'`})
+  echo "$AVAILABLE_SITES_DIR/$FILENAME"
+}
+
+_create() {
+  if [ "" = "$DOCUMENT_ROOT" ]; then
+    print_usage
+    exit $STS_EMPTY_DOCUMENT_ROOT
+  fi
+
+  if [ ! -d $DOCUMENT_ROOT ]; then
+    echo "The document root \"${BOLD}${DOCUMENT_ROOT}${RESET}\" doesn't exist."
+    exit $STS_INVALID_DOCUMENT_ROOT
+  fi
+
+  # Change to the directory where we will place the new file and the symlink
+  # so that we see the relative path correctly.
+  cd "${SITE_ENABLED%/*}";
+
+  if [ ! -f $SITE_AVAILABLE ]; then
+    cat > $SITE_AVAILABLE <<EOT
+server {
+  listen [::]:80;
+  listen 80;
+
+  # The host name to respond to
+  server_name $FILENAME;
+
+  # Path for static files
+  root $DOCUMENT_ROOT;
+
+  # Specify a charset
+  charset utf-8;
+
+  # Custom 404 page
+  error_page 404 /404.html;
+
+  # Include the basic h5bp config set
+  include h5bp/basic.conf;
+}
+
+server {
+  listen [::]:443 ssl spdy;
+  listen 443 ssl spdy;
+
+  # The host name to respond to
+  server_name $FILENAME;
+
+  include h5bp/directive-only/ssl.conf;
+
+  # Path for static files
+  root $DOCUMENT_ROOT;
+
+  # Specify a charset
+  charset utf-8;
+
+  # Custom 404 page
+  error_page 404 /404.html;
+
+  # Include the basic h5bp config set
+  include h5bp/basic.conf;
+}
+EOT
+  fi
+
+  _enable
+}
+
+_enable() {
+  # Change to the directory where we will place the symlink so that we
+  # see the relative path correctly.
+  cd "${SITE_ENABLED%/*}";
+
+  if [ -r $SITE_AVAILABLE ]; then
+    if [ -h $SITE_ENABLED ]; then
+      ## If already enabled say it and exit.
+      echo "${BOLD}${FILENAME}${RESET} is already enabled."
+      exit 0
+    else # symlink if not yet enabled
+      ln -s $SITE_AVAILABLE $SITE_ENABLED
+    fi
+
+    ## Test for a well formed configuration.
+    echo -n "Testing nginx configuration… "
+    $NGINX -t -q && STATUS=0
+
+    if [ $STATUS ]; then
+      echo "Ok"
+      echo "Site ${BOLD}${FILENAME}${RESET} has been enabled. "
+      echo "Run \"${BOLD}${NGINX} -s reload${RESET}\" to apply the changes."
+      exit 0
+    else
+      echo " Err"
+      # Exit with nginx error code
+      exit $?
+    fi
+  else
+    echo "Site configuration file ${BOLD}${FILENAME}${RESET} not found."
+    exit $STS_SITE_FILE_NOT_FOUND
+  fi
+}
+
+_disable() {
+  if [ -h $SITE_ENABLED ]; then
+    unlink $SITE_ENABLED
+    echo "Site ${BOLD}${FILENAME}${RESET} has been disabled. "
+    echo "Run \"${BOLD}${NGINX} -s reload${RESET}\" to apply the changes."
+  else
+    echo "Site ${BOLD}${FILENAME}${RESET} isn't enabled."
+  fi
+
+  exit 0
+}
+
+## Check the number of arguments.
+if [ $# -lt 1 ]; then
+  print_usage
+  exit $STS_INVALID_NUMBER_OF_ARGUMENTS
+fi
+
+SITE_AVAILABLE=`make_relative_path "$FILENAME"`
+SITE_ENABLED="$ENABLED_SITES_PATH/$FILENAME"
+
+# Check if the directory where we will place the symlink exists. If not
+# create it.
+[ -d ${SITE_ENABLED%/*} ] || mkdir -p ${SITE_ENABLED%/*}
+
+## Check that the file corresponding to site exists if enabling or
+## that the symbolic link exists if disabling. Perform the desired
+## action if possible. If not, print usage, signal an error and exit.
+case $ACTION in
+  -c|create)
+    _create
+    ;;
+
+  -d|disable)
+    _disable
+    ;;
+
+  -e|enable)
+    _enable
+    ;;
+
+  help)
+    print_usage
+    exit 0
+    ;;
+
+  *)
+    echo "Unknown option or command $ACTION."
+    print_usage
+    exit $STS_INVALID_ARGUMENT
+    ;;
+esac
+
+exit 0
+
+#EOF
