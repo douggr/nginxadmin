@@ -12,7 +12,8 @@ Usage: nginxadmin <command> <filename> [document root]
 
 Available commands:
   help                         : Show this message and exit.
-  -c, create  <filename> <root>: Create (and enable) a new site.
+  -c, create  <filename> <root>: Create (and enable) a new site. Note, <root>
+                                 must be an absolute path.
   -e, enable  <filename>       : Enable an earlier created site.
   -d, disable <filename>       : Disable a site.
 
